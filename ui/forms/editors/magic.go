@@ -87,6 +87,9 @@ func (e *Magic) populate(include []fyne.CanvasObject) {
 			e.right.Add(v)
 		}
 	}
+	e.left.Refresh()
+	e.middle.Refresh()
+	e.right.Refresh()
 }
 
 func (e *Magic) CreateRenderer() fyne.WidgetRenderer {

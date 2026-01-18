@@ -432,6 +432,7 @@ func (p *PaletteEditorDialog) updatePreview() {
 	p.previewContainer.RemoveAll()
 	p.previewContainer.Add(widget.NewLabel("Preview"))
 	p.previewContainer.Add(p.createPaletteGrid())
+	p.previewContainer.Refresh()
 }
 
 // revert reverts to the original palette

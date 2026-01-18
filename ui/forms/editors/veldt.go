@@ -64,6 +64,7 @@ func NewVeldt() *Veldt {
 				}
 			}
 		}
+		e.displayed.Refresh()
 	}
 
 	e.selectAll = widget.NewButton("Select All", func() {

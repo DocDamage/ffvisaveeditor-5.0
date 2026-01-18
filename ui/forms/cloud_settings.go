@@ -264,6 +264,7 @@ func (c *CloudSettingsDialog) refreshStatus(container *fyne.Container) {
 		provider, err := c.cloudManager.GetProvider(providerName)
 		if err != nil {
 			container.Add(widget.NewLabel(fmt.Sprintf("Error: %v", err)))
+			container.Refresh()
 			continue
 		}
 
@@ -282,6 +283,7 @@ func (c *CloudSettingsDialog) refreshStatus(container *fyne.Container) {
 		card := widget.NewCard(providerName, "", widget.NewLabel(statusText))
 		container.Add(card)
 	}
+	container.Refresh()
 }
 
 // authenticateProvider authenticates with a specific cloud provider
