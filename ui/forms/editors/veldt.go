@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"ffvi_editor/models/pr"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"

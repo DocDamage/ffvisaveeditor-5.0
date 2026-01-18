@@ -3,8 +3,11 @@ package forms
 import (
 	"context"
 	"ffvi_editor/io/pr"
+	"ffvi_editor/models/consts"
 	"fmt"
 	"image/color"
+	"sort"
+	"strings"
 
 	"ffvi_editor/scripting"
 
@@ -49,6 +52,29 @@ func (cdpd *CombatDepthPackDialog) Hide() {
 	}
 }
 
+// getUniqueZones returns all unique zone names from the maps database
+func getUniqueZones() []string {
+	zoneMap := make(map[string]bool)
+	for _, m := range consts.Maps {
+		if m != nil {
+			// Extract zone name (remove additional info in parentheses)
+			zoneName := m.Name
+			if idx := strings.Index(zoneName, " ("); idx >= 0 {
+				zoneName = zoneName[:idx]
+			}
+			zoneMap[zoneName] = true
+		}
+	}
+	
+	// Convert to sorted slice
+	zones := make([]string, 0, len(zoneMap))
+	for zone := range zoneMap {
+		zones = append(zones, zone)
+	}
+	sort.Strings(zones)
+	return zones
+}
+
 // buildUI constructs the complete dialog UI with modern styling
 func (cdpd *CombatDepthPackDialog) buildUI() {
 	// Status message display with modern styling
@@ -56,8 +82,8 @@ func (cdpd *CombatDepthPackDialog) buildUI() {
 	cdpd.statusMsg.Alignment = fyne.TextAlignCenter
 
 	// ===== ENCOUNTER TUNER SECTION =====
-	zoneEntry := widget.NewEntry()
-	zoneEntry.SetPlaceHolder("e.g., Mt. Kolts")
+	zoneSelect := widget.NewSelect(getUniqueZones(), func(s string) {})
+	zoneSelect.PlaceHolder = "Select a zone..."
 
 	rateEntry := widget.NewEntry()
 	rateEntry.SetText("1.0")
@@ -68,18 +94,18 @@ func (cdpd *CombatDepthPackDialog) buildUI() {
 	eliteEntry.SetPlaceHolder("0.0 - 1.0")
 
 	applyEncounterBtn := CreateCardButton("⚙ Apply Tuning", func() {
-		if zoneEntry.Text == "" {
+		if zoneSelect.Selected == "" {
 			dialog.ShowError(fmt.Errorf("zone cannot be empty"), cdpd.window)
 			return
 		}
-		code := scripting.BuildEncounterScript(zoneEntry.Text, rateEntry.Text, eliteEntry.Text)
+		code := scripting.BuildEncounterScript(zoneSelect.Selected, rateEntry.Text, eliteEntry.Text)
 		_, err := scripting.RunSnippetWithSave(context.Background(), code, cdpd.save)
 		if err != nil {
 			dialog.ShowError(err, cdpd.window)
 			return
 		}
-		cdpd.statusMsg.SetText(fmt.Sprintf("✓ Applied to %s", zoneEntry.Text))
-		dialog.ShowInformation("Success", fmt.Sprintf("Zone: %s\nRate: %s\nElite: %s", zoneEntry.Text, rateEntry.Text, eliteEntry.Text), cdpd.window)
+		cdpd.statusMsg.SetText(fmt.Sprintf("✓ Applied to %s", zoneSelect.Selected))
+		dialog.ShowInformation("Success", fmt.Sprintf("Zone: %s\nRate: %s\nElite: %s", zoneSelect.Selected, rateEntry.Text, eliteEntry.Text), cdpd.window)
 	})
 
 	encounterCard := CreateModernCard(
@@ -87,7 +113,7 @@ func (cdpd *CombatDepthPackDialog) buildUI() {
 		"Dynamic Encounter Tuner",
 		"Customize encounter rates and elite chances",
 		container.NewVBox(
-			CreateFormRow("Zone", zoneEntry),
+			CreateFormRow("Zone", zoneSelect),
 			CreateFormRow("Spawn Rate", rateEntry),
 			CreateFormRow("Elite Chance", eliteEntry),
 		),
@@ -197,7 +223,11 @@ func (cdpd *CombatDepthPackDialog) buildUI() {
 	scrollContent := CreateScrollableContent(mainContent, 550, 650)
 
 	// Modern button row
-	closeBtn := widget.NewButton("Close", func() { cdpd.Hide() })
+	closeBtn := widget.NewButton("Close", func() { 
+		if cdpd.dialog != nil {
+			cdpd.dialog.Hide()
+		}
+	})
 	closeBtn.Importance = widget.LowImportance
 
 	buttonRow := CreateDialogButtonRow(closeBtn)
