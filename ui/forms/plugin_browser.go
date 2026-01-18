@@ -69,7 +69,7 @@ func NewPluginBrowserDialog(w fyne.Window, mgr *plugins.Manager, marketplaceClie
 
 // Show displays the plugin browser dialog
 func (d *PluginBrowserDialog) Show() {
-	// Build UI components
+	// Build UI components FIRST before any goroutines
 	header := d.buildHeader()
 	content := d.buildContent()
 	footer := d.buildFooter()
@@ -87,7 +87,7 @@ func (d *PluginBrowserDialog) Show() {
 	d.dialog = dialog.NewCustom("Plugin Marketplace", "Close", dialogContent, d.window)
 	d.dialog.Resize(fyne.NewSize(900, 600))
 
-	// Load initial data
+	// Load initial data AFTER UI is built
 	go d.refreshPluginList()
 
 	d.dialog.Show()
@@ -392,8 +392,16 @@ func (d *PluginBrowserDialog) displayPluginDetails(plugin *marketplace.RemotePlu
 
 // refreshPluginList fetches the latest plugin list from the marketplace
 func (d *PluginBrowserDialog) refreshPluginList() {
+	// Safety check
+	if d.marketplace == nil {
+		d.setStatus("Error: Marketplace client not available")
+		return
+	}
+
 	d.setStatus("Fetching plugins from marketplace...")
-	d.refreshBtn.Disable()
+	if d.refreshBtn != nil {
+		d.refreshBtn.Disable()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -405,7 +413,9 @@ func (d *PluginBrowserDialog) refreshPluginList() {
 		Offset:   0,
 	})
 
-	d.refreshBtn.Enable()
+	if d.refreshBtn != nil {
+		d.refreshBtn.Enable()
+	}
 
 	if err != nil {
 		d.setStatus(fmt.Sprintf("Error: %v", err))
@@ -420,6 +430,11 @@ func (d *PluginBrowserDialog) refreshPluginList() {
 
 // filterAndSortPlugins applies current filters and sorting
 func (d *PluginBrowserDialog) filterAndSortPlugins() {
+	// Safety checks
+	if d.searchEntry == nil || d.categorySelect == nil || d.sortSelect == nil {
+		return
+	}
+
 	query := strings.ToLower(strings.TrimSpace(d.searchEntry.Text))
 	category := d.categorySelect.Selected
 	sortBy := d.sortSelect.Selected
@@ -661,7 +676,9 @@ func (d *PluginBrowserDialog) submitRating(plugin *marketplace.RemotePlugin, rat
 
 // setStatus updates the status label
 func (d *PluginBrowserDialog) setStatus(status string) {
-	d.statusLabel.SetText(status)
+	if d.statusLabel != nil {
+		d.statusLabel.SetText(status)
+	}
 }
 
 // formatNumber formats large numbers with commas (e.g., 1234 -> "1,234")

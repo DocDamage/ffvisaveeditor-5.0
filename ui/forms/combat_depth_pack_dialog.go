@@ -65,7 +65,7 @@ func getUniqueZones() []string {
 			zoneMap[zoneName] = true
 		}
 	}
-	
+
 	// Convert to sorted slice
 	zones := make([]string, 0, len(zoneMap))
 	for zone := range zoneMap {
@@ -223,7 +223,7 @@ func (cdpd *CombatDepthPackDialog) buildUI() {
 	scrollContent := CreateScrollableContent(mainContent, 550, 650)
 
 	// Modern button row
-	closeBtn := widget.NewButton("Close", func() { 
+	closeBtn := widget.NewButton("Close", func() {
 		if cdpd.dialog != nil {
 			cdpd.dialog.Hide()
 		}
