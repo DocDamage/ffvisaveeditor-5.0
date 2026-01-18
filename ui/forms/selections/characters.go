@@ -4,6 +4,7 @@ import (
 	"ffvi_editor/models/pr"
 	"ffvi_editor/ui/forms/editors"
 	"ffvi_editor/ui/forms/inputs"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"

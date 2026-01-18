@@ -294,7 +294,7 @@ func New() Gui {
 		g = &gui{
 			app:                a,
 			window:             a.NewWindow(fmt.Sprintf("Final Fantasy VI Save Editor - v%s", browser.Version)),
-			canvas:             container.NewStack(),
+			canvas:             container.NewMax(),
 			backupManager:      backupMgr,
 			undoStack:          state.NewUndoStack(100),
 			themeSwitcher:      NewThemeSwitcher(a.Preferences()),
@@ -818,44 +818,47 @@ func (g *gui) Load() {
 	g.savePreviousCanvas()
 	g.open.Disabled = true
 	g.canvas.RemoveAll()
-	g.canvas.Refresh()
-	g.canvas.Add(
-		forms.NewFileIO(forms.Load, g.window, config.SaveDir(), func(name, dir, file string, _ int, saveType global.SaveFileType) {
-			defer func() { g.open.Disabled = false }()
-			// Load file
-			config.SetSaveDir(dir)
-			p := pr.New()
-			if err := p.Load(filepath.Join(dir, file), saveType); err != nil {
-				g.restorePreviousCanvas()
-				dialog.NewError(err, g.window).Show()
-			} else {
-				// Success
-				g.prev = nil
-				g.save.Disabled = false
-				g.pr = p
-				// Update validation status on load
-				validator := validation.NewValidator()
-				res := validator.Validate(g.pr)
-				g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(res.Errors), len(res.Warnings)))
-				// Create editor and wire tab-change callback to refresh status
-				ed := selections.NewEditor()
-				ed.SetOnTabChanged(func(tabTitle string) {
-					if g.pr != nil {
-						res := validation.NewValidator().Validate(g.pr)
-						g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(res.Errors), len(res.Warnings)))
-						// If switching to Validation tab, refresh panel with latest data
-						if tabTitle == "Validation" && ed.GetValidationPanel() != nil {
-							ed.GetValidationPanel().ValidateSaveData(g.pr)
-						}
-					}
-				})
-				g.setCanvasContent(ed)
-			}
-		}, func() {
-			defer func() { g.open.Disabled = false }()
-			// Cancel
+	fileIO := forms.NewFileIO(forms.Load, g.window, config.SaveDir(), func(name, dir, file string, _ int, saveType global.SaveFileType) {
+		defer func() { g.open.Disabled = false }()
+		// Load file
+		config.SetSaveDir(dir)
+		p := pr.New()
+		if err := p.Load(filepath.Join(dir, file), saveType); err != nil {
 			g.restorePreviousCanvas()
-		}))
+			dialog.NewError(err, g.window).Show()
+		} else {
+			// Success
+			g.prev = nil
+			g.save.Disabled = false
+			g.pr = p
+			// Update validation status on load
+			validator := validation.NewValidator()
+			res := validator.Validate(g.pr)
+			g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(res.Errors), len(res.Warnings)))
+			// Create editor and wire tab-change callback to refresh status
+			ed := selections.NewEditor()
+			ed.SetOnTabChanged(func(tabTitle string) {
+				if g.pr != nil {
+					res := validation.NewValidator().Validate(g.pr)
+					g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(res.Errors), len(res.Warnings)))
+					// If switching to Validation tab, refresh panel with latest data
+					if tabTitle == "Validation" && ed.GetValidationPanel() != nil {
+						ed.GetValidationPanel().ValidateSaveData(g.pr)
+					}
+				}
+			})
+			g.setCanvasContent(ed)
+		}
+	}, func() {
+		defer func() { g.open.Disabled = false }()
+		// Cancel
+		g.restorePreviousCanvas()
+	})
+	g.canvas.Add(fileIO)
+	g.canvas.Refresh()
+	if g.window.Content() != nil {
+		g.window.Content().Refresh()
+	}
 }
 
 func (g *gui) Save() {
@@ -863,58 +866,61 @@ func (g *gui) Save() {
 	g.open.Disabled = true
 	g.save.Disabled = true
 	g.canvas.RemoveAll()
-	g.canvas.Refresh()
-	g.canvas.Add(
-		forms.NewFileIO(forms.Save, g.window, config.SaveDir(), func(name, dir, file string, slot int, saveType global.SaveFileType) {
-			defer func() {
-				g.open.Disabled = false
-				g.save.Disabled = false
-			}()
-			config.SetSaveDir(dir)
-			// Pre-save validation and optional auto-fix
-			validator := validation.NewValidator()
-			result := validator.Validate(g.pr)
-			// Update status bar with latest counts
-			g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(result.Errors), len(result.Warnings)))
-			proceedSave := func() {
-				if err := g.pr.Save(slot, filepath.Join(dir, file), saveType); err != nil {
-					g.restorePreviousCanvas()
-					dialog.NewError(err, g.window).Show()
-				} else {
-					// Success
-					g.restorePreviousCanvas()
-				}
-			}
-			if !result.Valid {
-				msg := fmt.Sprintf("Validation found %d errors and %d warnings. Auto-fix and continue?", len(result.Errors), len(result.Warnings))
-				dialog.NewConfirm("Validation Issues", msg, func(ok bool) {
-					if ok {
-						// Attempt auto-fix
-						_, _ = validator.AutoFixIssues(g.pr)
-						// Re-validate (optional)
-						newRes := validator.Validate(g.pr)
-						g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(newRes.Errors), len(newRes.Warnings)))
-						proceedSave()
-					} else {
-						// Secondary confirmation: proceed without fixes?
-						dialog.NewConfirm("Proceed Without Fixes?", "Save anyway without fixing validation issues?", func(confirm bool) {
-							if confirm {
-								proceedSave()
-							}
-						}, g.window).Show()
-					}
-				}, g.window).Show()
+	fileIO := forms.NewFileIO(forms.Save, g.window, config.SaveDir(), func(name, dir, file string, slot int, saveType global.SaveFileType) {
+		defer func() {
+			g.open.Disabled = false
+			g.save.Disabled = false
+		}()
+		config.SetSaveDir(dir)
+		// Pre-save validation and optional auto-fix
+		validator := validation.NewValidator()
+		result := validator.Validate(g.pr)
+		// Update status bar with latest counts
+		g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(result.Errors), len(result.Warnings)))
+		proceedSave := func() {
+			if err := g.pr.Save(slot, filepath.Join(dir, file), saveType); err != nil {
+				g.restorePreviousCanvas()
+				dialog.NewError(err, g.window).Show()
 			} else {
-				proceedSave()
+				// Success
+				g.restorePreviousCanvas()
 			}
-		}, func() {
-			defer func() {
-				g.open.Disabled = false
-				g.save.Disabled = false
-			}()
-			// Cancel
-			g.restorePreviousCanvas()
-		}))
+		}
+		if !result.Valid {
+			msg := fmt.Sprintf("Validation found %d errors and %d warnings. Auto-fix and continue?", len(result.Errors), len(result.Warnings))
+			dialog.NewConfirm("Validation Issues", msg, func(ok bool) {
+				if ok {
+					// Attempt auto-fix
+					_, _ = validator.AutoFixIssues(g.pr)
+					// Re-validate (optional)
+					newRes := validator.Validate(g.pr)
+					g.validationStatus.SetText(fmt.Sprintf("Validation: %d errors, %d warnings", len(newRes.Errors), len(newRes.Warnings)))
+					proceedSave()
+				} else {
+					// Secondary confirmation: proceed without fixes?
+					dialog.NewConfirm("Proceed Without Fixes?", "Save anyway without fixing validation issues?", func(confirm bool) {
+						if confirm {
+							proceedSave()
+						}
+					}, g.window).Show()
+				}
+			}, g.window).Show()
+		} else {
+			proceedSave()
+		}
+	}, func() {
+		defer func() {
+			g.open.Disabled = false
+			g.save.Disabled = false
+		}()
+		// Cancel
+		g.restorePreviousCanvas()
+	})
+	g.canvas.Add(fileIO)
+	g.canvas.Refresh()
+	if g.window.Content() != nil {
+		g.window.Content().Refresh()
+	}
 }
 
 func (g *gui) Run() {
@@ -926,6 +932,10 @@ func (g *gui) setCanvasContent(obj fyne.CanvasObject) {
 	g.canvas.RemoveAll()
 	g.canvas.Add(obj)
 	g.canvas.Refresh()
+	// Also refresh the window content to ensure proper layout propagation
+	if g.window.Content() != nil {
+		g.window.Content().Refresh()
+	}
 }
 
 // restorePreviousCanvas restores the previous canvas content and refreshes
@@ -934,6 +944,10 @@ func (g *gui) restorePreviousCanvas() {
 		g.canvas.RemoveAll()
 		g.canvas.Add(g.prev)
 		g.canvas.Refresh()
+		// Also refresh the window content to ensure proper layout propagation
+		if g.window.Content() != nil {
+			g.window.Content().Refresh()
+		}
 	}
 }
 
@@ -1018,6 +1032,7 @@ func (g *gui) showWelcomeScreen() {
 	)
 
 	g.canvas.Add(welcomeContent)
+	g.canvas.Refresh()
 	g.prev = welcomeContent
 }
 
