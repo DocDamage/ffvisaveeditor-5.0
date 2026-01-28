@@ -20,6 +20,7 @@ import (
 	"ffvi_editor/models/consts"
 	"ffvi_editor/models/consts/pr"
 	pri "ffvi_editor/models/pr"
+
 	jo "gitlab.com/c0b/go-ordered-json"
 )
 
@@ -206,8 +207,6 @@ func (p *PR) loadCharacters() (err error) {
 		if c.Exp, err = p.getInt(d, CurrentExp); err != nil {
 			return
 		}
-
-		// TODO Status
 
 		var values interface{}
 		if values, err = p.getFromTarget(d, CommandList); err != nil {

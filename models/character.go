@@ -28,7 +28,7 @@ type Character struct {
 
 	EnableCommandsSave bool
 	Commands           []*Command
-	StatusEffects      []*consts.NameSlotMask8
+	StatusEffects      []*consts.NameSlotMask8 `json:"-"`
 }
 
 type Spell struct {

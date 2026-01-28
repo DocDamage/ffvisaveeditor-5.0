@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +14,12 @@ import (
 	"ffvi_editor/io/pr"
 	"ffvi_editor/ui/forms"
 	"ffvi_editor/ui/forms/selections"
+
+	"image/color"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 )
@@ -28,13 +34,18 @@ type (
 		Run()
 	}
 	gui struct {
-		app    fyne.App
-		window fyne.Window
-		canvas *fyne.Container
-		open   *fyne.MenuItem
-		save   *fyne.MenuItem
-		prev   fyne.CanvasObject
-		pr     *pr.PR
+		app             fyne.App
+		window          fyne.Window
+		canvas          *fyne.Container
+		open            *fyne.MenuItem
+		save            *fyne.MenuItem
+		saveState       *fyne.MenuItem
+		loadState       *fyne.MenuItem
+		quickSaveStates []*fyne.MenuItem
+		quickLoadStates []*fyne.MenuItem
+		prev            fyne.CanvasObject
+		pr              *pr.PR
+		background      *fyne.Container
 	}
 	MenuItem interface {
 		Item() *fyne.MenuItem
@@ -72,8 +83,25 @@ func New() Gui {
 			canvas: container.NewStack(),
 		}
 	)
+
+	// Load background image
+	if bgImg, err := fyne.LoadResourceFromPath("ChatGPT Image Jan 27, 2026, 08_28_25 PM.png"); err == nil {
+		img := canvas.NewImageFromResource(bgImg)
+		img.FillMode = canvas.ImageFillStretch
+
+		// Create semi-transparent overlay for better text readability
+		overlay := canvas.NewRectangle(color.NRGBA{R: 0, G: 0, B: 0, A: 128}) // Semi-transparent black
+
+		g.background = container.NewStack(
+			img,
+			overlay,
+			g.canvas,
+		)
+	} else {
+		g.background = g.canvas
+	}
 	g.window.SetIcon(fyne.NewStaticResource("icon", resourceIconIco.StaticContent))
-	g.window.SetContent(g.canvas)
+	g.window.SetContent(g.background)
 	g.open = fyne.NewMenuItem("Open", func() {
 		g.Load()
 	})
@@ -81,13 +109,43 @@ func New() Gui {
 		g.Save()
 	})
 	g.save.Disabled = true
+	g.saveState = fyne.NewMenuItem("Save State", func() {
+		g.SaveState()
+	})
+	g.saveState.Disabled = true
+	g.loadState = fyne.NewMenuItem("Load State", func() {
+		g.LoadState()
+	})
+	g.loadState.Disabled = true
+	// Initialize quick save/load states
+	g.quickSaveStates = make([]*fyne.MenuItem, 5)
+	g.quickLoadStates = make([]*fyne.MenuItem, 5)
+	for i := 0; i < 5; i++ {
+		num := i + 1
+		g.quickSaveStates[i] = fyne.NewMenuItem(fmt.Sprintf("Quick Save %d", num), func() {
+			g.QuickSaveState(num)
+		})
+		g.quickSaveStates[i].Disabled = true
+		g.quickLoadStates[i] = fyne.NewMenuItem(fmt.Sprintf("Quick Load %d", num), func() {
+			g.QuickLoadState(num)
+		})
+		g.quickLoadStates[i].Disabled = true
+	}
 	x, y := config.WindowSize()
 	g.window.Resize(fyne.NewSize(x, y))
+	g.window.SetFixedSize(false)
+	quickStatesMenu := fyne.NewMenuItem("Quick States", func() {})
+	quickStatesMenu.ChildMenu = fyne.NewMenu("", append(g.quickSaveStates, g.quickLoadStates...)...)
 	g.window.SetMainMenu(fyne.NewMainMenu(
 		fyne.NewMenu("File",
 			g.open,
 			fyne.NewMenuItemSeparator(),
 			g.save,
+			fyne.NewMenuItemSeparator(),
+			g.saveState,
+			g.loadState,
+			fyne.NewMenuItemSeparator(),
+			quickStatesMenu,
 		)))
 	return g
 }
@@ -120,6 +178,7 @@ func (g *gui) Load() {
 				if g.prev != nil {
 					g.canvas.RemoveAll()
 					g.canvas.Add(g.prev)
+					g.window.Content().Refresh()
 				}
 				dialog.NewError(err, g.window).Show()
 			} else {
@@ -127,8 +186,17 @@ func (g *gui) Load() {
 				g.canvas.RemoveAll()
 				g.prev = nil
 				g.save.Disabled = false
+				g.saveState.Disabled = false
+				g.loadState.Disabled = false
+				for _, item := range g.quickSaveStates {
+					item.Disabled = false
+				}
+				for _, item := range g.quickLoadStates {
+					item.Disabled = false
+				}
 				g.pr = p
 				g.canvas.Add(selections.NewEditor())
+				g.window.Content().Refresh()
 			}
 		}, func() {
 			defer func() { g.open.Disabled = false }()
@@ -136,6 +204,7 @@ func (g *gui) Load() {
 			if g.prev != nil {
 				g.canvas.RemoveAll()
 				g.canvas.Add(g.prev)
+				g.window.Content().Refresh()
 			}
 		}))
 }
@@ -159,6 +228,7 @@ func (g *gui) Save() {
 				if g.prev != nil {
 					g.canvas.RemoveAll()
 					g.canvas.Add(g.prev)
+					g.window.Content().Refresh()
 				}
 				dialog.NewError(err, g.window).Show()
 			} else {
@@ -166,6 +236,7 @@ func (g *gui) Save() {
 				if g.prev != nil {
 					g.canvas.RemoveAll()
 					g.canvas.Add(g.prev)
+					g.window.Content().Refresh()
 				}
 			}
 		}, func() {
@@ -177,12 +248,106 @@ func (g *gui) Save() {
 			if g.prev != nil {
 				g.canvas.RemoveAll()
 				g.canvas.Add(g.prev)
+				g.window.Content().Refresh()
 			}
 		}))
 }
 
 func (g *gui) Run() {
 	g.window.ShowAndRun()
+}
+
+func (g *gui) SaveState() {
+	if g.pr == nil {
+		return
+	}
+	// Open file dialog to save state
+	dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		if err != nil || writer == nil {
+			return
+		}
+		defer writer.Close()
+		// Serialize PR to JSON
+		data, err := json.Marshal(g.pr)
+		if err != nil {
+			dialog.NewError(err, g.window).Show()
+			return
+		}
+		_, err = writer.Write(data)
+		if err != nil {
+			dialog.NewError(err, g.window).Show()
+		}
+	}, g.window).Show()
+}
+
+func (g *gui) LoadState() {
+	if g.pr == nil {
+		return
+	}
+	// Open file dialog to load state
+	dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if err != nil || reader == nil {
+			return
+		}
+		defer reader.Close()
+		// Deserialize JSON to PR
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			dialog.NewError(err, g.window).Show()
+			return
+		}
+		var newPR pr.PR
+		if err := json.Unmarshal(data, &newPR); err != nil {
+			dialog.NewError(err, g.window).Show()
+			return
+		}
+		// Update current PR
+		*g.pr = newPR
+		// Refresh UI
+		g.window.Content().Refresh()
+	}, g.window).Show()
+}
+
+func (g *gui) QuickSaveState(slot int) {
+	if g.pr == nil {
+		return
+	}
+	filename := fmt.Sprintf("quickstate%d.json", slot)
+	filepath := filepath.Join(config.SaveDir(), filename)
+	data, err := json.Marshal(g.pr)
+	if err != nil {
+		dialog.NewError(err, g.window).Show()
+		return
+	}
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		dialog.NewError(err, g.window).Show()
+	}
+}
+
+func (g *gui) QuickLoadState(slot int) {
+	if g.pr == nil {
+		return
+	}
+	filename := fmt.Sprintf("quickstate%d.json", slot)
+	filepath := filepath.Join(config.SaveDir(), filename)
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			dialog.NewInformation("No State", "No quick state saved for this slot.", g.window).Show()
+		} else {
+			dialog.NewError(err, g.window).Show()
+		}
+		return
+	}
+	var newPR pr.PR
+	if err := json.Unmarshal(data, &newPR); err != nil {
+		dialog.NewError(err, g.window).Show()
+		return
+	}
+	// Update current PR
+	*g.pr = newPR
+	// Refresh UI
+	g.window.Content().Refresh()
 }
 
 func (m menuItem) Item() *fyne.MenuItem {

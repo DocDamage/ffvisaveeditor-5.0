@@ -11,6 +11,7 @@ import (
 	"ffvi_editor/models/consts"
 	"ffvi_editor/models/consts/pr"
 	pri "ffvi_editor/models/pr"
+
 	jo "gitlab.com/c0b/go-ordered-json"
 )
 
@@ -131,6 +132,71 @@ func (p *PR) saveCharacters(addedItems *[]int) (err error) {
 
 		c := pri.GetCharacter(o.Name)
 
+		// Clamp HP and MP values to valid ranges
+		if c.HP.Max < o.HPBase {
+			c.HP.Max = o.HPBase
+		}
+		if c.MP.Max < o.MPBase {
+			c.MP.Max = o.MPBase
+		}
+		if c.HP.Current < 0 {
+			c.HP.Current = 0
+		}
+		if c.HP.Current == 0 && c.HP.Max > 0 {
+			c.HP.Current = 1
+		}
+		if c.HP.Current > c.HP.Max {
+			c.HP.Current = c.HP.Max
+		}
+		if c.MP.Current < 0 {
+			c.MP.Current = 0
+		}
+		if c.MP.Current == 0 && c.MP.Max > 0 {
+			c.MP.Current = 1
+		}
+		if c.MP.Current > c.MP.Max {
+			c.MP.Current = c.MP.Max
+		}
+
+		// Clamp stats to 0-255
+		if c.Vigor < 0 {
+			c.Vigor = 0
+		}
+		if c.Vigor > 255 {
+			c.Vigor = 255
+		}
+		if c.Stamina < 0 {
+			c.Stamina = 0
+		}
+		if c.Stamina > 255 {
+			c.Stamina = 255
+		}
+		if c.Speed < 0 {
+			c.Speed = 0
+		}
+		if c.Speed > 255 {
+			c.Speed = 255
+		}
+		if c.Magic < 0 {
+			c.Magic = 0
+		}
+		if c.Magic > 255 {
+			c.Magic = 255
+		}
+
+		// Clamp level to 1-99
+		if c.Level < 1 {
+			c.Level = 1
+		}
+		if c.Level > 99 {
+			c.Level = 99
+		}
+
+		// Clamp exp to non-negative
+		if c.Exp < 0 {
+			c.Exp = 0
+		}
+
 		if err = p.setValue(d, Name, c.Name); err != nil {
 			return
 		}
@@ -195,7 +261,15 @@ func (p *PR) saveCharacters(addedItems *[]int) (err error) {
 			}
 		}
 
-		// TODO Status
+		// TODO Save Status Effects
+		// statusBytes := consts.GenerateBytes(c.StatusEffects)
+		// sl := make([]interface{}, len(statusBytes))
+		// for i, b := range statusBytes {
+		// 	sl[i] = int(b)
+		// }
+		// if err = p.setTarget(d, CurrentConditionList, sl); err != nil {
+		// 	return
+		// }
 
 		if err = p.setValue(params, AdditionalPower, c.Vigor); err != nil {
 			return
@@ -532,6 +606,10 @@ func (p *PR) saveInventory(baseKey string, sortKey string, inventory *pri.Invent
 			}
 			found[r.ItemID] = true
 		}
+		// Clamp count to non-negative
+		if r.Count < 0 {
+			r.Count = 0
+		}
 		// Skip known crashing items
 		if r.ItemID == 184 || r.ItemID == 243 {
 			continue
@@ -575,22 +653,46 @@ func (p *PR) saveInventory(baseKey string, sortKey string, inventory *pri.Invent
 }
 
 func (p *PR) saveMiscStats() (err error) {
-	if err = p.setValue(p.UserData, OwnedGil, models.GetMisc().GP); err != nil {
+	misc := models.GetMisc()
+	// Clamp values to non-negative
+	if misc.GP < 0 {
+		misc.GP = 0
+	}
+	if misc.Steps < 0 {
+		misc.Steps = 0
+	}
+	if misc.EscapeCount < 0 {
+		misc.EscapeCount = 0
+	}
+	if misc.BattleCount < 0 {
+		misc.BattleCount = 0
+	}
+	if misc.NumberOfSaves < 0 {
+		misc.NumberOfSaves = 0
+	}
+	if misc.MonstersKilledCount < 0 {
+		misc.MonstersKilledCount = 0
+	}
+	if misc.CursedShieldFightCount < 0 {
+		misc.CursedShieldFightCount = 0
+	}
+
+	if err = p.setValue(p.UserData, OwnedGil, misc.GP); err != nil {
 		return
 	}
-	if err = p.setValue(p.UserData, Steps, models.GetMisc().Steps); err != nil {
+	if err = p.setValue(p.UserData, Steps, misc.Steps); err != nil {
 		return
 	}
-	if err = p.setValue(p.UserData, EscapeCount, models.GetMisc().EscapeCount); err != nil {
+	if err = p.setValue(p.UserData, EscapeCount, misc.EscapeCount); err != nil {
 		return
 	}
-	if err = p.setValue(p.UserData, BattleCount, models.GetMisc().BattleCount); err != nil {
+	if err = p.setValue(p.UserData, BattleCount, misc.BattleCount); err != nil {
 		return
 	}
-	if err = p.setValue(p.UserData, SaveCompleteCount, models.GetMisc().NumberOfSaves); err != nil {
+	if err = p.setValue(p.UserData, SaveCompleteCount, misc.NumberOfSaves); err != nil {
 		return
 	}
-	if err = p.setValue(p.UserData, MonstersKilledCount, models.GetMisc().MonstersKilledCount); err != nil {
+	if err = p.setValue(p.UserData, MonstersKilledCount, misc.MonstersKilledCount); err != nil {
 		return
 	}
 	if ds, ok := p.Base.GetValue(DataStorage); ok {
@@ -598,7 +700,7 @@ func (p *PR) saveMiscStats() (err error) {
 		if err = m.UnmarshalJSON([]byte(ds.(string))); err != nil {
 			return
 		}
-		if err = p.SetIntInSlice(m, "global", models.GetMisc().CursedShieldFightCount); err != nil {
+		if err = p.SetIntInSlice(m, "global", misc.CursedShieldFightCount); err != nil {
 			return
 		}
 		var b []byte
@@ -773,7 +875,7 @@ func (p *PR) getInvCount(eq *[]string, counts map[int]int, addedItems *[]int, id
 		i.ContentID = id
 		i.Count = count
 	} else {
-		// *addedItems = append(*addedItems, id)
+		*addedItems = append(*addedItems, id)
 		i.ContentID = id
 		i.Count = 1
 	}

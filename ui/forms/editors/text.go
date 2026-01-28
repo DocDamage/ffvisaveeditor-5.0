@@ -994,9 +994,9 @@ Claw
 329 - Sprint Shoes`
 	importantItemsText = `39 - Cider
 40 - Old Clock Key
-41 - Fish
-42 - Fish
-43 - Fish
+41 - Piranha (Slow)
+42 - Anguiform (Medium)
+43 - Aspidochelone (Fast)
 44 - Fish
 45 - Lump of Metal
 46 - Lola's Letter
